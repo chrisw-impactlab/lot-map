@@ -765,3 +765,17 @@ test('a background task that failed leaves a fault on its station', { options: O
   await ui.unmount()
   expect(source.split('font-weight="700"').length - 1).toBe(1)
 })
+
+test('typed slash commands never push a background task off the map', { options: OWN }, async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  on('skill.prompt', (_, e) => ({ text: e.text }))
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'b3' } }) as never)
+
+  await $.tool.call({ tool: 'Bash', command: 'make', description: 'Сборка', run_in_background: true })
+  // More rows than the map keeps.
+  for (let i = 0; i < 90; i++) await $.skill.prompt({ skill: `skill-${i}`, text: '' })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /Сборка/ })).toBeDefined()
+  await ui.unmount()
+})

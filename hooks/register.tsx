@@ -1,13 +1,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Board, Entry, StationId, Status } from '../types'
-import { STATIONS, classify, clean, describeNow, drawMap, firstLine, foldRows, formatMs, memoryIds, setupFrom, shortModel, taskNotice, taskOf } from './map'
+import type { Board, Entry, Status } from '../types'
+import { addEntry, clearFaults, closeCoreRuns, closeEntry, endAgent, holdOpen, kept, settleTask } from './board'
+import type { Start } from './board'
+import { classify, describeNow, drawMap, firstLine, memoryIds, setupFrom, shortModel, taskNotice, taskOf } from './map'
 import type { Setup } from './map'
+import { feedRows, tallyOf } from './pane'
 
 const PANE = 'lot-map'
-const KEEP = 80
-const CREW = 12
 
 // Change the tag when a field of Entry or Board changes: it declines what an earlier version stored.
 const board = atom({ plugin: 'lot-map', key: 'board' } as const, { entries: [], counts: {} } as Board, { shape: 'board-3' })
@@ -23,58 +24,12 @@ async function quietly<T>(work: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
-type Start = {
-  station: StationId
-  label: string
-  from?: Entry['from']
-  status?: Status
-  agentId?: string
-  mark?: Entry['mark']
-  /** Adds nothing to the station's count: a second view of something already counted. */
-  uncounted?: boolean
-  startedAt?: number
-  endedAt?: number
-  patch?: Partial<Pick<Board, 'model' | 'step' | 'switchedAt'>>
-}
-
-/** The newest rows, and beside them every background task still going, however long ago it started. */
-const kept = (entries: Entry[]): Entry[] => {
-  const from = entries.length - KEEP
-  return from <= 0 ? entries : entries.filter((e, i) => i >= from || (e.status === 'run' && e.task !== undefined))
-}
-
-const isFault = (status: Status): boolean => status === 'err' || status === 'block'
-
-const oneMore = (faults: Board['faults'], station: StationId): Board['faults'] => ({ ...faults, [station]: (faults?.[station] ?? 0) + 1 })
-
 async function begin($: EngineInterface, start: Start): Promise<string | undefined> {
   return quietly(async () => {
     const now = await $.clock.now()
-    const entry: Entry = {
-      id: newId(now),
-      station: start.station,
-      label: clean(start.label),
-      from: start.from ?? 'core',
-      startedAt: start.startedAt ?? now,
-      status: start.status ?? 'run',
-      ...(start.status !== undefined ? { endedAt: start.endedAt ?? now } : {}),
-      ...(start.agentId !== undefined ? { agentId: start.agentId } : {}),
-      ...(start.mark !== undefined ? { mark: start.mark } : {}),
-    }
-    await update($, board, b => ({
-      ...b,
-      ...start.patch,
-      entries: kept([...b.entries, entry]),
-      counts: start.uncounted ? b.counts : { ...b.counts, [entry.station]: (b.counts[entry.station] ?? 0) + 1 },
-      // What a hook brought to memory unasked is counted apart from what was asked for.
-      ...(entry.station === 'memory' && entry.from === 'inbound' && !start.uncounted ? { pushed: (b.pushed ?? 0) + 1 } : {}),
-      // An interrupted turn lands on the person's own station and is no fault of anything.
-      ...(isFault(entry.status) && entry.station !== 'you' ? { faults: oneMore(b.faults, entry.station) } : {}),
-      ...(entry.agentId !== undefined && !(b.agents ?? []).includes(entry.agentId)
-        ? { agents: [...(b.agents ?? []), entry.agentId].slice(-CREW) }
-        : {}),
-    }))
-    return entry.id
+    const id = newId(now)
+    await update($, board, b => addEntry(b, start, id, now))
+    return id
   })
 }
 
@@ -82,37 +37,21 @@ async function finish($: EngineInterface, id: string | undefined, status: Status
   if (id === undefined) return
   await quietly(async () => {
     const now = await $.clock.now()
-    await update($, board, b => {
-      const open = b.entries.find(e => e.id === id && e.status === 'run')
-      return {
-        ...b,
-        ...patch,
-        entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now } : e)),
-        ...(open !== undefined && isFault(status) ? { faults: oneMore(b.faults, open.station) } : {}),
-      }
-    })
+    await update($, board, b => closeEntry(b, id, status, now, patch))
   })
 }
 
 /** The call started work that goes on after it answered: its row stays open under the task's id. */
 async function background($: EngineInterface, id: string | undefined, task: string): Promise<void> {
   if (id === undefined) return
-  await quietly(() => update($, board, b => ({ ...b, entries: b.entries.map(e => (e.id === id && e.status === 'run' ? { ...e, task } : e)) })))
+  await quietly(() => update($, board, b => holdOpen(b, id, task)))
 }
 
 /** A background task ended: its row closes, as a fault when the task failed. */
 async function settle($: EngineInterface, task: string, status: Status): Promise<void> {
   await quietly(async () => {
     const now = await $.clock.now()
-    await update($, board, b => {
-      const open = b.entries.find(e => e.task === task && e.status === 'run')
-      if (open === undefined) return b
-      return {
-        ...b,
-        entries: b.entries.map(e => (e === open ? { ...e, status, endedAt: now } : e)),
-        ...(isFault(status) ? { faults: oneMore(b.faults, open.station) } : {}),
-      }
-    })
+    await update($, board, b => settleTask(b, task, status, now))
   })
 }
 
@@ -145,8 +84,6 @@ async function noteContext($: EngineInterface, context: readonly string[] | unde
 export const register: Register = (on, options) => {
   const setup = setupFrom(options)
   const { t } = setup
-  // The feed's second column fits the longest station name of the language.
-  const column = Math.max(8, ...Object.values(t.stations).map(name => name.length))
 
   // Calls a settings hook refused, so that the tool's own row reads as blocked and not as an error.
   // Loses nothing across a reload that matters: a reload never lands in the middle of a call.
@@ -180,7 +117,7 @@ export const register: Register = (on, options) => {
       if (notice.status !== undefined) await settle($, notice.id, notice.status)
     } else if (e.agentId === undefined && e.text !== '') {
       // A new message clears what went wrong on the way to the last answer.
-      await quietly(() => update($, board, b => (b.faults === undefined ? b : { ...b, faults: {} })))
+      await quietly(() => update($, board, clearFaults))
       await begin($, { station: 'you', label: t.newMessage, from: 'inbound', status: 'ok' })
     }
     return next(e)
@@ -219,15 +156,10 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     if (e.agentId !== undefined) {
-      // A subagent's loop is over: it leaves the agents station, and a call of its that never reported back is settled.
       const agentId = e.agentId
       await quietly(async () => {
         const now = await $.clock.now()
-        await update($, board, b => ({
-          ...b,
-          agents: (b.agents ?? []).filter(id => id !== agentId),
-          entries: b.entries.map(x => (x.status === 'run' && (x.agentId === agentId || x.task === agentId) ? { ...x, status: 'ok' as const, endedAt: now } : x)),
-        }))
+        await update($, board, b => endAgent(b, agentId, now))
       })
     } else {
       await begin($, {
@@ -239,10 +171,7 @@ export const register: Register = (on, options) => {
       // An interrupted call never reports back; left alone its row would pulse for the rest of the session.
       await quietly(async () => {
         const now = await $.clock.now()
-        await update($, board, b => ({
-          ...b,
-          entries: b.entries.map(x => (x.status === 'run' && x.from === 'core' && x.task === undefined ? { ...x, status: 'ok' as const, endedAt: now } : x)),
-        }))
+        await update($, board, b => closeCoreRuns(b, now))
       })
     }
     return next(e)
@@ -315,7 +244,7 @@ export const register: Register = (on, options) => {
       await update($, board, b => {
         if (b.entries.some(x => x.station === 'skills' && x.status === 'run' && x.label === e.skill)) return b
         const entry: Entry = { id: newId(now), station: 'skills', label: e.skill, from: 'core', startedAt: now, endedAt: now, status: 'ok' }
-        return { ...b, entries: [...b.entries, entry].slice(-KEEP), counts: { ...b.counts, skills: (b.counts.skills ?? 0) + 1 } }
+        return { ...b, entries: kept([...b.entries, entry]), counts: { ...b.counts, skills: (b.counts.skills ?? 0) + 1 } }
       })
     })
     return result
@@ -335,24 +264,16 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     const { Box, Text } = $.ui.resolve(e)
 
-    const rows = foldRows(state.entries).map(({ entry, times, tookMs }) => {
-      const isSwitch = entry.mark === 'switch'
-      const mark = isSwitch ? '◆' : entry.status === 'run' ? '●' : entry.status === 'ok' ? '·' : '✕'
-      const took = entry.endedAt === undefined ? t.running : tookMs > 0 ? formatMs(tookMs, t) : ''
-      // Theme keys, so the rows read on a light theme as well as on a dark one.
-      const color = isSwitch || entry.status === 'run' ? 'claude' : entry.status === 'ok' ? undefined : 'error'
-      const line = `${mark} ${t.stations[entry.station].padEnd(column)} ${entry.label}${times > 1 ? `  +${times - 1}` : ''}${took === '' ? '' : `  ${took}`}`
-      return (
-        <Text mono size="footnote" color={color} dimColor={entry.status === 'ok' && !isSwitch}>
-          {line}
-        </Text>
-      )
-    })
+    const rows = feedRows(state, t).map(row => (
+      <Text mono size="footnote" color={row.color} dimColor={row.isDim}>
+        {row.text}
+      </Text>
+    ))
     const feed = rows.length > 0 ? rows : [<Text dimColor>{t.nothingYet}</Text>]
     const current = <Text mono size="footnote">{describeNow(state, t)}</Text>
 
     if (e.surface === 'terminal') {
-      const tally = STATIONS.filter(s => (state.counts[s.id] ?? 0) > 0).map(s => `${t.stations[s.id]} ${state.counts[s.id]}`).join(' · ')
+      const tally = tallyOf(state, t)
       return (
         <Box flexDirection="column">
           {current}
