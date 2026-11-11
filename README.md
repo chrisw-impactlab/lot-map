@@ -162,14 +162,48 @@ Control characters are taken out of every label before it is drawn.
 
 A fault on the map never reaches a tool call or a model turn.
 
+## Viewer
+
+`lot-map-viewer` is a second plugin in this repository. It shows the map of another Claude Code session in a pane of its own. Use it to watch a terminal session from the desktop app.
+
+Install it from the same marketplace:
+
+```bash
+claude plugin install lot-map-viewer@lot-map
+```
+
+Then, in the session where you want the map:
+
+- `/lot-map-viewer` opens the pane and lists the 10 newest other sessions. Press one to connect.
+- `/lot-map-viewer 0bd008` connects to the session whose id starts with those characters. Give 6 or more.
+- **Disconnect** in the pane stops the viewer. Ending the session that runs the viewer does the same.
+
+The viewer draws the same map and feed as the mod, from the other session's transcript files, subagents included. A long session replays from its first record when you connect. The map has no context ring, because a transcript does not say how large the context window is.
+
+The viewer only reads. It follows `<config folder>/projects/<folder>/<session id>.jsonl` and the files in `<session id>/subagents/` with `tail -n +1 -F`, and it runs `grep` on the same files to find each session's title for the picker. It writes nothing and sends nothing to the other session. That session needs no plugin, and its transcript holds nothing from the viewer.
+
+A viewer installed at the user scope loads in every session, the watched one included. There it registers its command and does nothing else.
+
+How it differs from the mod:
+
+- Labels follow the same rules. The picker and the pane's header also show a session's title, which is a short summary of what it is about.
+- It has no `hookRecords` and no `hookReasons` option: a transcript holds neither the record numbers that a hook adds nor the refusal of a hook.
+- Its own messages are in English. The map and the feed use your `language`.
+- It needs `tail` and `grep`, so it runs on macOS and Linux.
+
 ## Developing
 
 ```bash
 claude plugin test .
 claude plugin validate .
+claude plugin validate viewer
 ```
 
+`claude plugin test viewer` runs all the tests of the viewer. `claude plugin test .` also finds the viewer's test file, but the plugin under test there is the mod: the viewer's unit tests run, and each of its integration tests prints `skipped` and does nothing. Run both commands.
+
 Words live in `hooks/text.ts`; a new language is one more table there and one more value of `language` in `.claude-plugin/plugin.json`.
+
+The `viewer` folder holds copies of `hooks/map.ts`, `hooks/text.ts`, `hooks/board.ts`, `hooks/pane.ts`, the shared types and the options of the mod (all but `hookRecords` and `hookReasons`), because a plugin may import only from its own folder. After a change to any of them, run `scripts/sync-viewer.sh`. `scripts/sync-viewer.sh --check` changes nothing and fails when a copy is out of date.
 
 ## License
 
