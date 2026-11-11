@@ -52,7 +52,7 @@ const loopOf = (record: TranscriptRecord): string => (record.isSidechain === tru
 /** Every tool call in an assistant record starts a row under the call's own id. A subagent's call starts from the Agents station. */
 function withCalls(board: Board, record: TranscriptRecord, now: number, setup: Setup, loop: string): Board {
   const own = loop === MAIN ? { from: 'core' as const } : { from: 'agents' as const, agentId: loop }
-  return blocksOf(record).reduce((b, block) => {
+  return blocksOf(record).reduce<Board>((b, block) => {
     const id = str(block.id)
     if (block.type !== 'tool_use' || id === '') return b
     const seen = classify(str(block.name), isObject(block.input) ? block.input : {}, setup)
@@ -116,7 +116,7 @@ function withResults(reading: Reading, record: TranscriptRecord, now: number): R
   const result = isObject(record.toolUseResult) ? record.toolUseResult : {}
   const agent = str(result.agentId)
   const stopped = str(result.task_type) === '' ? '' : str(result.task_id)
-  return blocksOf(record).reduce((r, block) => {
+  return blocksOf(record).reduce<Reading>((r, block) => {
     const id = str(block.tool_use_id)
     if (block.type !== 'tool_result' || id === '') return r
     const isError = block.is_error === true

@@ -80,7 +80,7 @@ async function follow($: EngineInterface, control: Control, setup: Setup, target
   const streams: { return: (value: { code: number | null; signal: string | null }) => Promise<unknown> }[] = []
 
   await quietly(() => update($, board, () => EMPTY))
-  await quietly(() => update($, view, () => ({ kind: 'watching', row: target })))
+  await quietly(() => update($, view, (): View => ({ kind: 'watching', row: target })))
 
   const feed = (lines: readonly string[]): void => {
     for (const line of lines) {
@@ -171,7 +171,7 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: COMMAND }, async ($, e) => {
     const problem = async (text: string): Promise<{ text: string }> => {
-      await quietly(() => update($, view, () => ({ kind: 'problem', text })))
+      await quietly(() => update($, view, (): View => ({ kind: 'problem', text })))
       await quietly(() => $.ui.open({ id: PANE, title: WORDS.title }))
       return { text }
     }

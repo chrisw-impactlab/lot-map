@@ -7,6 +7,9 @@ import type { Session } from './sessions'
 import { applyRecord, startReading } from './transcript'
 import type { Reading, TranscriptRecord } from './transcript'
 
+// The test runner provides `console`; the plugin type library (es2023 only) does not declare it.
+declare const console: { error(message: string): void }
+
 const SETUP = setupFrom({})
 const BASE = Date.parse('2026-11-11T10:00:00.000Z')
 const at = (seconds: number): string => new Date(BASE + seconds * 1000).toISOString()
@@ -35,7 +38,7 @@ const notice = (seconds: number, task: string, status: string): TranscriptRecord
   message: { content: `<task-notification><task-id>${task}</task-id><status>${status}</status><summary>private words</summary></task-notification>` },
 })
 
-const read = (...records: TranscriptRecord[]): Reading => records.reduce((reading, record) => applyRecord(reading, record, SETUP), startReading())
+const read = (...records: TranscriptRecord[]): Reading => records.reduce<Reading>((reading, record) => applyRecord(reading, record, SETUP), startReading())
 
 test('a tool call starts a row on its station, and its result closes it', () => {
   const open = read(call(0, 'tu1', 'Read', { file_path: '/a/b/c.py' }))
@@ -490,7 +493,8 @@ const viewerTest = (name: string, body: TestBody): void =>
       await body($, on)
     } finally {
       await $.session.end({ reason: 'other', sessionId: 'own-session' } as never)
-      await lastClock?.advance(3000)
+      // The type checker sees only the `undefined` above: the test body sets it through `world`.
+      await (lastClock as ReturnType<typeof mock.clock> | undefined)?.advance(3000)
     }
   })
 
@@ -634,7 +638,7 @@ viewerTest('an unknown id and the viewer\'s own session connect to nothing, and 
 
 viewerTest('without an id the pane offers the other sessions, newest first, and a press connects to one', async ($, on) => {
   const { clock } = world(on, [JSON.stringify(call(0, 'tu1', 'Read', { file_path: '/a/b/c.py' }))], THREE)
-  on('process.run', () => ({ value: { exitCode: 0, stdout: '{"type":"ai-title","aiTitle":"Fix the map"}\n', stderr: '' } }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: '{"type":"ai-title","aiTitle":"Fix the map"}\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
   if (!(await started($))) return
   const ran = await $.command.run({ command: 'lot-map-viewer', args: '' } as never)
   expect(JSON.stringify(ran)).toContain('pick a session')

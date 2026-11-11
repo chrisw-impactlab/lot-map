@@ -199,6 +199,8 @@ claude plugin validate .
 claude plugin validate viewer
 ```
 
+To type-check, load the plugin once so that Claude Code writes the types it needs (`claude --plugin-dir .` or `claude --plugin-dir viewer`), then run `npx -p typescript tsc -p .` or `npx -p typescript tsc -p viewer`. Each `tsconfig.json` extends the file that Claude Code writes in that plugin's `.claude-plugin/types/`.
+
 `claude plugin test viewer` runs all the tests of the viewer. `claude plugin test .` also finds the viewer's test file, but the plugin under test there is the mod: the viewer's unit tests run, and each of its integration tests prints `skipped` and does nothing. Run both commands.
 
 Words live in `hooks/text.ts`; a new language is one more table there and one more value of `language` in `.claude-plugin/plugin.json`.
