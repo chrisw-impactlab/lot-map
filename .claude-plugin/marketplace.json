@@ -7,6 +7,10 @@
     {
       "name": "lot-map",
       "source": "./"
+    },
+    {
+      "name": "lot-map-viewer",
+      "source": "./viewer"
     }
   ]
 }

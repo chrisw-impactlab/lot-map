@@ -1,0 +1,104 @@
+{
+  "name": "lot-map-viewer",
+  "version": "0.1.0",
+  "description": "Shows the lot-map of another Claude Code session, read from its transcript files. Changes nothing in that session.",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "options": [
+        "en",
+        "ru",
+        "es",
+        "fr",
+        "de",
+        "it"
+      ],
+      "default": "en",
+      "description": "The language of the labels on the map."
+    },
+    "coreName": {
+      "type": "string",
+      "title": "Name at the centre",
+      "default": "CLAUDE",
+      "description": "What the circle in the middle of the map says, up to ten characters."
+    },
+    "memoryServers": {
+      "type": "string",
+      "multiple": true,
+      "title": "Memory servers",
+      "default": [
+        "memory"
+      ],
+      "description": "MCP servers whose tools light the Memory station."
+    },
+    "memoryCommands": {
+      "type": "string",
+      "multiple": true,
+      "title": "Memory commands",
+      "default": [],
+      "description": "Shell commands or scripts that light the Memory station. A name counts when it is the command itself or begins with it and a hyphen, an underscore or a dot."
+    },
+    "memorySubcommands": {
+      "type": "string",
+      "multiple": true,
+      "title": "Memory subcommands",
+      "default": [],
+      "description": "Words after a memory command that the map may show, such as add or search. Without them a memory command goes by its own name, because the word after it may be content."
+    },
+    "memoryPaths": {
+      "type": "string",
+      "multiple": true,
+      "title": "Memory paths",
+      "default": [],
+      "description": "Parts of a path that make a file a memory. Claude Code's own memory folder always counts."
+    },
+    "memoryLabels": {
+      "type": "string",
+      "multiple": true,
+      "title": "Memory labels",
+      "default": [],
+      "description": "Short names for memory tools, each written as tool=name. A tool without one goes by its own name."
+    },
+    "theme": {
+      "type": "string",
+      "title": "Colours",
+      "options": [
+        "auto",
+        "dark",
+        "light"
+      ],
+      "default": "auto",
+      "description": "The map's colours: dark, light, or auto, which is dark on a dark surface and light on a light one."
+    },
+    "background": {
+      "type": "string",
+      "title": "Background",
+      "options": [
+        "solid",
+        "transparent"
+      ],
+      "default": "solid",
+      "description": "The map's own background, or transparent, which lets the pane behind it show through."
+    },
+    "colors": {
+      "type": "string",
+      "multiple": true,
+      "title": "Colours of your own",
+      "default": [],
+      "description": "Colours that replace the map's own, each written as name=#rrggbb. Names: background, node, line, spoke, text, label, faint, accent, active, error, memory, memoryActive, route. Set theme to dark or light with them."
+    },
+    "layout": {
+      "type": "string",
+      "title": "Layout",
+      "options": [
+        "you-top",
+        "you-bottom"
+      ],
+      "default": "you-top",
+      "description": "Where you are on the map: at the top, or at the bottom with the network and the browser at the top."
+    }
+  }
+}

@@ -1,0 +1,24 @@
+
+/** A session the viewer can watch, as the picker and the header name it. */
+export type Watched = {
+  id: string
+  /** The name of the project folder that holds the session's file. */
+  folder: string
+  path: string
+  mtimeMs: number
+  /** The title the session was last given, when it has one. */
+  title?: string
+}
+
+/** What the pane shows besides the map. */
+export type View =
+  | { kind: 'idle' }
+  | { kind: 'picking'; rows: Watched[] }
+  | { kind: 'watching'; row: Watched }
+  | { kind: 'problem'; text: string }
+
+declare module 'claude-code' {
+  interface PluginState {
+    'lot-map-viewer': { board: Shaped<Board>; view: Shaped<View> }
+  }
+}
