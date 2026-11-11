@@ -110,9 +110,12 @@ const withEnd = (reading: Reading, board: Board, agent: string, now: number): Re
 /**
  * A result closes the row of its call, or keeps it open when the call started a background task.
  * A result that names an agent ends that agent, which is how a subagent that answered at once leaves the Agents station.
+ * The result of a TaskStop call ends the task it stopped: that task sends no notification.
  */
 function withResults(reading: Reading, record: TranscriptRecord, now: number): Reading {
-  const agent = isObject(record.toolUseResult) ? str(record.toolUseResult.agentId) : ''
+  const result = isObject(record.toolUseResult) ? record.toolUseResult : {}
+  const agent = str(result.agentId)
+  const stopped = str(result.task_type) === '' ? '' : str(result.task_id)
   return blocksOf(record).reduce((r, block) => {
     const id = str(block.tool_use_id)
     if (block.type !== 'tool_result' || id === '') return r
@@ -120,6 +123,7 @@ function withResults(reading: Reading, record: TranscriptRecord, now: number): R
     const task = isError ? undefined : taskOf(record.toolUseResult)
     if (task !== undefined) return { ...r, board: holdOpen(r.board, id, task) }
     const closed = closeEntry(r.board, id, isError ? 'err' : 'ok', now)
+    if (stopped !== '' && !isError) return withEnd(r, settleTask(closed, stopped, 'ok', now), stopped, now)
     return agent === '' ? { ...r, board: closed } : withEnd(r, closed, agent, now)
   }, reading)
 }

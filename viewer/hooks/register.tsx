@@ -50,8 +50,11 @@ async function quietly<T>(work: () => Promise<T>): Promise<T | undefined> {
 const ago = (ms: number): string =>
   ms < 90_000 ? 'now' : ms < 5_400_000 ? `${Math.round(ms / 60_000)} min ago` : ms < 129_600_000 ? `${Math.round(ms / 3_600_000)} h ago` : `${Math.round(ms / 86_400_000)} d ago`
 
+/** The project folder's name is its path with the dashes for the slashes. The home folder at the start says nothing, so it goes. */
+const folderName = (folder: string): string => folder.replace(/^-?(?:Users|home)-[^-]+-/, '').replace(/^-+/, '').slice(-28)
+
 /** A session's name: where it runs, which it is, and what it is about. */
-const nameOf = (row: Watched): string => `${row.folder.replace(/^-+/, '').slice(-28)} · ${row.id.slice(0, 8)}${row.title === undefined ? '' : ` · ${row.title}`}`
+const nameOf = (row: Watched): string => `${folderName(row.folder)} · ${row.id.slice(0, 8)}${row.title === undefined ? '' : ` · ${row.title}`}`
 
 /** The picker's line for a session: when it last changed, then its name. */
 const lineOf = (row: Watched, now: number): string => `${ago(now - row.mtimeMs)} · ${nameOf(row)}`

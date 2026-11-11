@@ -365,6 +365,36 @@ test('a session is titled by the newest title in its file, cut short, and by not
   expect((await titleOf(ask(`{"aiTitle":"${'x'.repeat(100)}"}`), '/p'))?.length).toBe(60)
 })
 
+// A task that is stopped with TaskStop sends no notification: the result of that call is the only sign that it ended.
+const stopResult = (task: string) => ({ message: 'Stopped', task_id: task, task_type: 'local_bash', command: 'sleep 600' })
+
+test('a task stopped with TaskStop ends on the result of that call, and a stop that failed ends nothing', () => {
+  const launched = [
+    call(0, 'tu1', 'Bash', { command: 'sleep 600', description: 'Wait', run_in_background: true }),
+    answer(1, 'tu1', { toolUseResult: { backgroundTaskId: 'b1' } }),
+    call(5, 'tu2', 'TaskStop', { task_id: 'b1' }),
+  ]
+  const stopped = read(...launched, answer(6, 'tu2', { toolUseResult: stopResult('b1') }))
+  expect(stopped.board.entries.find(e => e.id === 'tu1')?.status).toBe('ok')
+  expect(stopped.board.entries.find(e => e.id === 'tu1')?.endedAt).toBe(BASE + 6000)
+  expect(stopped.board.entries.filter(e => e.status === 'run')).toEqual([])
+
+  const failed = read(...launched, answer(6, 'tu2', { isError: true, toolUseResult: stopResult('b1') }))
+  expect(failed.board.entries.find(e => e.id === 'tu1')?.status).toBe('run')
+})
+
+test('a subagent stopped with TaskStop leaves the Agents station with its hanging calls', () => {
+  const reading = read(
+    call(0, 'ag1', 'Agent', { description: 'Look around' }),
+    answer(1, 'ag1', { toolUseResult: { status: 'async_launched', agentId: 'a1', isAsync: true } }),
+    inAgent('a1', step(2, 's1', TALK)),
+    call(5, 'tu2', 'TaskStop', { task_id: 'a1' }),
+    answer(6, 'tu2', { toolUseResult: stopResult('a1') }),
+  )
+  expect(reading.board.entries.filter(e => e.status === 'run')).toEqual([])
+  expect(reading.board.agents).toEqual([])
+})
+
 // The viewer follows the main file and each subagent's file at once, so a subagent's records can be read after the record that ended it.
 test('records of a subagent that are read after its end leave no running row and no dot on the Agents station', () => {
   const launched = [
@@ -619,6 +649,24 @@ viewerTest('without an id the pane offers the other sessions, newest first, and 
   await clock.settle()
   expect((await ui.find({ type: 'Text', text: /Watching/ }))?.text).toContain('0bd00807')
   expect(await ui.find({ type: 'Text', text: /b\/c\.py/ })).toBeDefined()
+  await ui.press({ key: 'disconnect' })
+  await clock.advance(3000)
+  await ui.unmount()
+})
+
+viewerTest('the header names the project folder without the home folder it sits in', async ($, on) => {
+  const folder = '-Users-chris-code-lot-map'
+  const tree: Tree = {
+    '/h/.claude/projects': [ENTRY(folder, 'dir')],
+    [`/h/.claude/projects/${folder}`]: [ENTRY(`${WATCHED_ID}.jsonl`, 'file', BASE)],
+  }
+  const { clock } = world(on, [], tree)
+  if (!(await started($))) return
+  await $.command.run({ command: 'lot-map-viewer', args: WATCHED_ID } as never)
+  await clock.settle()
+
+  const ui = await $.ui.mount({ ...VIEWER_PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /Watching/ }))?.text).toContain('Watching code-lot-map · 0bd00807')
   await ui.press({ key: 'disconnect' })
   await clock.advance(3000)
   await ui.unmount()
